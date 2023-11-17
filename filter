@@ -1,0 +1,137 @@
+#include <cmath>
+#include <iostream>
+#include <vector>
+#include <fstream>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+class ButterworthFilter {
+public:
+    ButterworthFilter(double cutoffFrequency, double samplingFrequency, int order)
+        : cutoffFrequency(cutoffFrequency), samplingFrequency(samplingFrequency), order(order) {
+
+        CalculateCoefficients();
+        InitializeState();
+    }
+
+    double Filter(double input) {
+        // Обновление состояния
+        for (int i = order - 1; i > 0; --i) {
+            state[i] = state[i - 1];
+        }
+        state[0] = input;
+
+        // Расчет результата
+        double output = 0.0;
+        for (int i = 0; i < order; ++i) {
+            output += b[i] * state[i];
+        }
+        for (int i = 1; i < order; ++i) {
+            output -= a[i] * outputHistory[i];
+        }
+
+        // Обновление истории выхода
+        for (int i = order - 1; i > 0; --i) {
+            outputHistory[i] = outputHistory[i - 1];
+        }
+        outputHistory[0] = output;
+
+        return output;
+    }
+
+    // Функция для фильтрации данных
+    std::vector<double> FilterData(const std::vector<double>& inputData) {
+        std::vector<double> filteredData;
+
+        for (double input : inputData) {
+            double output = Filter(input);
+            filteredData.push_back(output);
+        }
+
+        //// Нормализация
+        //double maxInput = *std::max_element(inputData.begin(), inputData.end());
+        //double maxOutput = *std::max_element(filteredData.begin(), filteredData.end());
+
+        //for (double& value : filteredData) {
+        //    value *= maxInput / maxOutput;
+        //}
+
+        return filteredData;
+    }
+
+private:
+    double cutoffFrequency;
+    double samplingFrequency;
+    int order;
+    std::vector<double> state;
+    std::vector<double> outputHistory;
+    std::vector<double> b;
+    std::vector<double> a;
+
+    void CalculateCoefficients() {
+        // Задание необходимых параметров
+        double wc = 2.0 * M_PI * cutoffFrequency / samplingFrequency;
+        double tanTerm = tan(wc / 2.0);
+
+        b.resize(order + 1, 0.0);
+        a.resize(order + 1, 0.0);
+
+        for (int k = 0; k <= order; ++k) {
+            b[k] = binomialCoeff(order, k) * pow(tanTerm, order - k) * pow(2.0, -order);
+            a[k] = (k % 2 == 0 ? 1 : -1) * binomialCoeff(order, k) * pow(tanTerm, order - k) * pow(2.0, -order);
+        }
+    }
+
+    void InitializeState() {
+        state.resize(order, 0.0);
+        outputHistory.resize(order, 0.0);
+    }
+
+    int binomialCoeff(int n, int k) {
+        if (k == 0 || k == n) {
+            return 1;
+        }
+        return binomialCoeff(n - 1, k - 1) + binomialCoeff(n - 1, k);
+    }
+};
+
+int main() {
+    // Параметры для генерации сигнала
+    double amplitude = 1.0;
+    double frequency = 5.0;  // Частота сигнала
+    double samplingInterval = 0.01;
+    double duration = 5.0;  // Длительность сигнала в секундах
+    int numSamples = static_cast<int>(duration / samplingInterval);
+
+    // Создаем вектор для хранения исходных данных с шумом
+    std::vector<double> inputDataWithNoise;
+
+    // Генерируем искусственный сигнал (синусоида с шумом)
+    for (int i = 0; i < numSamples; ++i) {
+        double time = i * samplingInterval;
+        double signalValue = amplitude * sin(2.0 * M_PI * frequency * time);
+        double noise = 4.0 * static_cast<double>(rand()) / RAND_MAX - 0.5;  // Шум от -0.5 до 0.5
+        inputDataWithNoise.push_back(signalValue + noise);
+    }
+
+    // Запись входных данных с шумом в файл "input_data.txt"
+    std::ofstream inputDataFile("input_data.txt");
+    for (size_t i = 0; i < inputDataWithNoise.size(); ++i) {
+        inputDataFile << i * samplingInterval << " " << inputDataWithNoise[i] << std::endl;
+    }
+    inputDataFile.close();
+
+    // Пример использования фильтра Баттерворта
+    double cutoffFreq = 5.0; // Частота среза в Гц
+    double samplingFreq = 100.0; // Частота дискретизации в Гц
+    int order = 2; // Порядок фильтра
+
+    ButterworthFilter butterworthFilter(cutoffFreq, samplingFreq, order);
+
+    // Фильтрация данных
+    std::vector<double> filteredData = butterworthFilter.FilterData(inputDataWithNoise);
+
+    return 0;
+}
